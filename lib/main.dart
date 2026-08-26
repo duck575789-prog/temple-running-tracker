@@ -8,26 +8,26 @@ import 'package:flutter_tts/flutter_tts.dart';
 
 void main() {
   WidgetsFlutterBinding.ensureInitialized();
-  runApp(const TempleRunnerApp());
+  runApp(const UltraTempleRunnerApp());
 }
 
-class TempleRunnerApp extends StatelessWidget {
-  const TempleRunnerApp({super.key});
+class UltraTempleRunnerApp extends StatelessWidget {
+  const UltraTempleRunnerApp({super.key});
 
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
-      title: 'Temple Run GPS Tracker',
+      title: 'Ultra Temple Runner',
       debugShowCheckedModeBanner: false,
       theme: ThemeData.dark().copyWith(
-        scaffoldBackgroundColor: const Color(0xFF0D111A),
+        scaffoldBackgroundColor: const Color(0xFF07090E),
         colorScheme: const ColorScheme.dark(
           primary: Color(0xFF00F5D4),
           secondary: Color(0xFFFF0055),
-          surface: Color(0xFF141923),
+          surface: Color(0xFF10141E),
         ),
       ),
-      home: const MainTrackerScreen(),
+      home: const UltraTrackerDashboard(),
     );
   }
 }
@@ -51,8 +51,6 @@ class LapInfo {
   }
 }
 
-enum TrackTheme { grass, neonCity, desert, lava }
-
 class RunSession {
   final String id;
   final DateTime startTime;
@@ -63,7 +61,7 @@ class RunSession {
   List<LapInfo> laps;
   double currentSpeedKmh;
   double targetPaceKmh;
-  TrackTheme activeTheme;
+  int coinsCollected;
 
   RunSession({
     required this.id,
@@ -73,7 +71,7 @@ class RunSession {
     this.durationSeconds = 0,
     this.currentSpeedKmh = 0.0,
     this.targetPaceKmh = 8.0,
-    this.activeTheme = TrackTheme.grass,
+    this.coinsCollected = 0,
     List<LatLng>? routeCoordinates,
     List<LapInfo>? laps,
   })  : routeCoordinates = routeCoordinates ?? [],
@@ -120,21 +118,21 @@ class VoiceAssistantService {
     int currentKm = (distanceMeters / 1000).floor();
     if (currentKm > _lastAnnouncedKm && currentKm <= targetKm && currentKm > 0) {
       _lastAnnouncedKm = currentKm;
-      speak("शाबाश! आपने $currentKm किलोमीटर पूरा कर लिया है।");
+      speak("शानदार! आपने $currentKm किलोमीटर पूरा कर लिया है!");
       return;
     }
 
     if (_lastEncouragementTime == null ||
-        now.difference(_lastEncouragementTime!).inSeconds > 45) {
+        now.difference(_lastEncouragementTime!).inSeconds > 40) {
       if (currentSpeedKmh > 1.5 && currentSpeedKmh < (targetSpeedKmh * 0.75)) {
         _lastEncouragementTime = now;
-        speak("कम ऑन! स्पीड धीमी हो रही है, थोड़ा और जोर लगाओ, लक्ष्य करीब है!");
+        speak("स्पीड धीमी हो रही है! थोड़ा और जोर लगाओ, टारगेट करीब है!");
       }
     }
   }
 }
 
-// ---------------- RUN MANAGER ----------------
+// ---------------- GPS RUN MANAGER ----------------
 class RunManagerService extends ChangeNotifier {
   RunSession? session;
   final VoiceAssistantService voiceCoach = VoiceAssistantService();
@@ -154,11 +152,13 @@ class RunManagerService extends ChangeNotifier {
     _lastLapSeconds = 0;
     _lastLapDistanceMeters = 0.0;
 
-    voiceCoach.speak("रनिंग शुरू! आपका लक्ष्य है $targetDistanceKm किलोमीटर।");
+    voiceCoach.speak("रनिंग शुरू! लक्ष्य है $targetDistanceKm किलोमीटर। ऑल द बेस्ट!");
 
     _timer = Timer.periodic(const Duration(seconds: 1), (_) {
       if (session != null) {
         session!.durationSeconds++;
+        // हर 20 मीटर पर एक सिक्का कलेक्ट होता है
+        session!.coinsCollected = (session!.totalDistanceMeters / 20).floor();
         notifyListeners();
       }
     });
@@ -215,7 +215,7 @@ class RunManagerService extends ChangeNotifier {
     _lastLapDistanceMeters = session!.totalDistanceMeters;
 
     voiceCoach.speak(
-      "चक्कर नंबर ${newLap.lapNumber} पूरा हुआ, समय लगा ${newLap.formattedTime}",
+      "चक्कर नंबर ${newLap.lapNumber} पूरा हुआ! समय: ${newLap.formattedTime}",
     );
     notifyListeners();
   }
@@ -224,30 +224,31 @@ class RunManagerService extends ChangeNotifier {
     isRunning = false;
     _timer?.cancel();
     _positionSub?.cancel();
-    voiceCoach.speak("शानदार रन! आपने वर्कआउट पूरा कर लिया है।");
+    voiceCoach.speak("शानदार वर्कआउट पूरा हुआ! आपने बहुत अच्छा दौड़ा।");
     notifyListeners();
   }
 }
 
-// ---------------- TEMPLE RUN TRACK WIDGET ----------------
-class TempleRunTrackWidget extends StatefulWidget {
+// ---------------- 3D TEMPLE RUN GRAPHICS ENGINE ----------------
+class UltraTempleCanvasWidget extends StatefulWidget {
   final double currentSpeedKmh;
-  final TrackTheme theme;
+  final int coins;
 
-  const TempleRunTrackWidget({
+  const UltraTempleCanvasWidget({
     super.key,
     required this.currentSpeedKmh,
-    this.theme = TrackTheme.grass,
+    required this.coins,
   });
 
   @override
-  State<TempleRunTrackWidget> createState() => _TempleRunTrackWidgetState();
+  State<UltraTempleCanvasWidget> createState() => _UltraTempleCanvasWidgetState();
 }
 
-class _TempleRunTrackWidgetState extends State<TempleRunTrackWidget>
+class _UltraTempleCanvasWidgetState extends State<UltraTempleCanvasWidget>
     with SingleTickerProviderStateMixin {
   late AnimationController _animController;
   double _trackOffset = 0.0;
+  double _runnerLimbPhase = 0.0;
 
   @override
   void initState() {
@@ -255,14 +256,15 @@ class _TempleRunTrackWidgetState extends State<TempleRunTrackWidget>
     _animController = AnimationController(
       vsync: this,
       duration: const Duration(milliseconds: 16),
-    )..addListener(_updateAnimation);
+    )..addListener(_updateScene);
     _animController.repeat();
   }
 
-  void _updateAnimation() {
-    final speedMultiplier = (widget.currentSpeedKmh / 10.0).clamp(0.0, 3.0);
+  void _updateScene() {
+    final speedFactor = (widget.currentSpeedKmh / 8.0).clamp(0.1, 3.5);
     setState(() {
-      _trackOffset = (_trackOffset + (0.04 * speedMultiplier)) % 1.0;
+      _trackOffset = (_trackOffset + (0.025 * speedFactor)) % 1.0;
+      _runnerLimbPhase = (_runnerLimbPhase + (0.15 * speedFactor)) % (2 * math.pi);
     });
   }
 
@@ -275,118 +277,295 @@ class _TempleRunTrackWidgetState extends State<TempleRunTrackWidget>
   @override
   Widget build(BuildContext context) {
     return Container(
-      height: 180,
+      height: 230,
       decoration: BoxDecoration(
-        borderRadius: BorderRadius.circular(20),
+        borderRadius: BorderRadius.circular(24),
+        border: Border.all(color: const Color(0xFF00F5D4).withOpacity(0.35), width: 1.5),
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withOpacity(0.5),
-            blurRadius: 10,
-            offset: const Offset(0, 4),
+            color: const Color(0xFF00F5D4).withOpacity(0.15),
+            blurRadius: 20,
+            spreadRadius: 2,
           ),
         ],
       ),
       child: ClipRRect(
-        borderRadius: BorderRadius.circular(20),
-        child: CustomPaint(
-          painter: _TrackPainter(
-            offset: _trackOffset,
-            theme: widget.theme,
-            isMoving: widget.currentSpeedKmh > 1.0,
-          ),
-          child: Center(
-            child: Column(
-              mainAxisAlignment: MainAxisAlignment.end,
-              children: [
-                AnimatedContainer(
-                  duration: const Duration(milliseconds: 200),
-                  transform: Matrix4.translationValues(
-                    0,
-                    widget.currentSpeedKmh > 1.0
-                        ? math.sin(_trackOffset * math.pi * 8) * 4
-                        : 0,
-                    0,
-                  ),
-                  child: const Icon(
-                    Icons.directions_run_rounded,
-                    size: 56,
-                    color: Color(0xFF00F5D4),
-                    shadows: [
-                      Shadow(color: Color(0xFF00F5D4), blurRadius: 18),
-                    ],
-                  ),
-                ),
-                const SizedBox(height: 10),
-              ],
+        borderRadius: BorderRadius.circular(22),
+        child: Stack(
+          children: [
+            CustomPaint(
+              size: Size.infinite,
+              painter: _Ultra3DWorldPainter(
+                offset: _trackOffset,
+                limbPhase: _runnerLimbPhase,
+                speedKmh: widget.currentSpeedKmh,
+              ),
             ),
-          ),
+            // Coin Counter HUD
+            Positioned(
+              top: 12,
+              left: 14,
+              child: Container(
+                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+                decoration: BoxDecoration(
+                  color: Colors.black.withOpacity(0.65),
+                  borderRadius: BorderRadius.circular(20),
+                  border: Border.all(color: Colors.amberAccent.withOpacity(0.5)),
+                ),
+                child: Row(
+                  children: [
+                    const Icon(Icons.monetization_on, color: Colors.amberAccent, size: 18),
+                    const SizedBox(width: 6),
+                    Text(
+                      "${widget.coins}",
+                      style: const TextStyle(
+                        color: Colors.amberAccent,
+                        fontWeight: FontWeight.bold,
+                        fontSize: 14,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ],
         ),
       ),
     );
   }
 }
 
-class _TrackPainter extends CustomPainter {
+class _Ultra3DWorldPainter extends CustomPainter {
   final double offset;
-  final TrackTheme theme;
-  final bool isMoving;
+  final double limbPhase;
+  final double speedKmh;
 
-  _TrackPainter({
+  _Ultra3DWorldPainter({
     required this.offset,
-    required this.theme,
-    required this.isMoving,
+    required this.limbPhase,
+    required this.speedKmh,
   });
 
   @override
   void paint(Canvas canvas, Size size) {
     final w = size.width;
     final h = size.height;
+    final horizonY = h * 0.28;
 
-    final groundPaint = Paint()..color = const Color(0xFF1B4332);
-    canvas.drawRect(Rect.fromLTWH(0, 0, w, h), groundPaint);
+    // 1. DYNAMIC SKY & SUN
+    final skyGradient = LinearGradient(
+      begin: Alignment.topCenter,
+      end: Alignment.bottomCenter,
+      colors: [
+        const Color(0xFF0A1128),
+        const Color(0xFF1C3144),
+        const Color(0xFFD00000).withOpacity(0.7),
+      ],
+    );
+    canvas.drawRect(
+      Rect.fromLTWH(0, 0, w, horizonY),
+      Paint()..shader = skyGradient.createShader(Rect.fromLTWH(0, 0, w, horizonY)),
+    );
 
-    final path = Path()
-      ..moveTo(w * 0.38, 0)
-      ..lineTo(w * 0.62, 0)
-      ..lineTo(w * 0.85, h)
-      ..lineTo(w * 0.15, h)
+    // Glowing Sun
+    canvas.drawCircle(
+      Offset(w * 0.5, horizonY * 0.65),
+      22,
+      Paint()
+        ..color = const Color(0xFFFFBA08)
+        ..maskFilter = const MaskFilter.blur(BlurStyle.solid, 14),
+    );
+
+    // 2. 3D TERRAIN & GRASS
+    final grassPaint = Paint()..color = const Color(0xFF0F3820);
+    canvas.drawRect(Rect.fromLTWH(0, horizonY, w, h - horizonY), grassPaint);
+
+    // 3. 3D STONE TEMPLE PATH (Ancient Flagstones)
+    final path3D = Path()
+      ..moveTo(w * 0.42, horizonY)
+      ..lineTo(w * 0.58, horizonY)
+      ..lineTo(w * 0.88, h)
+      ..lineTo(w * 0.12, h)
       ..close();
 
-    final trackPaint = Paint()..color = const Color(0xFF523A28);
-    canvas.drawPath(path, trackPaint);
+    final pathShader = LinearGradient(
+      begin: Alignment.topCenter,
+      end: Alignment.bottomCenter,
+      colors: [
+        const Color(0xFF2B2118),
+        const Color(0xFF533E2D),
+        const Color(0xFF382A1E),
+      ],
+    ).createShader(Rect.fromLTWH(0, horizonY, w, h));
 
-    final stripePaint = Paint()
-      ..color = const Color(0xFF8B5A2B)
-      ..style = PaintingStyle.fill;
+    canvas.drawPath(path3D, Paint()..shader = pathShader);
 
-    for (int i = 0; i < 5; i++) {
-      double yNorm = ((i / 5.0) + offset) % 1.0;
-      double currentY = yNorm * h;
-      double stripeWidth = (w * 0.1) + (yNorm * (w * 0.4));
-      canvas.drawRect(
-        Rect.fromCenter(
-          center: Offset(w / 2, currentY),
-          width: stripeWidth,
-          height: 6 + (yNorm * 8),
-        ),
-        stripePaint,
+    // Moving 3D Flagstone Slabs & Side Pillars
+    for (int i = 0; i < 7; i++) {
+      double t = ((i / 7.0) + offset) % 1.0;
+      double y = horizonY + (math.pow(t, 2.2) * (h - horizonY));
+      double roadWidth = (w * 0.16) + (t * (w * 0.76));
+
+      // Slab separator
+      canvas.drawLine(
+        Offset((w / 2) - (roadWidth / 2), y),
+        Offset((w / 2) + (roadWidth / 2), y),
+        Paint()
+          ..color = const Color(0xFF140F0A)
+          ..strokeWidth = 2.0 + (t * 3.5),
+      );
+
+      // Ancient Pillars on Road Sides
+      if (i % 2 == 0) {
+        double pXLeft = (w / 2) - (roadWidth / 2) - (t * 18);
+        double pXRight = (w / 2) + (roadWidth / 2) + (t * 18);
+        double pillarH = 10 + (t * 38);
+        double pillarW = 4 + (t * 12);
+
+        final pillarPaint = Paint()..color = const Color(0xFF7A6855);
+        canvas.drawRRect(
+          RRect.fromRectAndRadius(
+            Rect.fromLTWH(pXLeft - pillarW, y - pillarH, pillarW, pillarH),
+            const Radius.circular(2),
+          ),
+          pillarPaint,
+        );
+        canvas.drawRRect(
+          RRect.fromRectAndRadius(
+            Rect.fromLTWH(pXRight, y - pillarH, pillarW, pillarH),
+            const Radius.circular(2),
+          ),
+          pillarPaint,
+        );
+      }
+
+      // Rotating 3D Gold Coins floating along the path
+      if (i % 2 == 1) {
+        double coinY = y - (12 + (t * 22));
+        double coinRadius = 3 + (t * 8);
+        double spinScale = math.cos((offset * math.pi * 6) + i).abs();
+
+        final coinPaint = Paint()
+          ..color = const Color(0xFFFFD166)
+          ..style = PaintingStyle.fill;
+        canvas.drawOval(
+          Rect.fromCenter(
+            center: Offset(w * 0.5, coinY),
+            width: coinRadius * 2 * spinScale,
+            height: coinRadius * 2,
+          ),
+          coinPaint,
+        );
+      }
+    }
+
+    // 4. ANIMATED 3D ATHLETIC RUNNER CHARACTER
+    _draw3DAnimatedRunner(canvas, w * 0.5, h * 0.78);
+  }
+
+  void _draw3DAnimatedRunner(Canvas canvas, double rx, double ry) {
+    final isRunningFast = speedKmh > 1.0;
+    final legSwing = isRunningFast ? math.sin(limbPhase) * 22 : 0.0;
+    final armSwing = isRunningFast ? math.cos(limbPhase) * 20 : 0.0;
+    final bounce = isRunningFast ? (math.sin(limbPhase * 2).abs() * 6) : 0.0;
+
+    final actualY = ry - bounce;
+
+    // Ground Shadow
+    canvas.drawOval(
+      Rect.fromCenter(
+        center: Offset(rx, ry + 20),
+        width: 36 + (bounce * 1.5),
+        height: 10,
+      ),
+      Paint()..color = Colors.black.withOpacity(0.55),
+    );
+
+    // Dust particles under feet
+    if (isRunningFast) {
+      canvas.drawCircle(
+        Offset(rx - 12 + math.Random().nextDouble() * 24, ry + 18),
+        3,
+        Paint()..color = const Color(0xFFC49A6C).withOpacity(0.6),
       );
     }
+
+    final neonBodyPaint = Paint()
+      ..color = const Color(0xFF00F5D4)
+      ..strokeWidth = 4.5
+      ..strokeCap = StrokeCap.round;
+
+    final darkLimbPaint = Paint()
+      ..color = const Color(0xFF00B4D8)
+      ..strokeWidth = 4.0
+      ..strokeCap = StrokeCap.round;
+
+    // Legs (Left & Right with realistic knee bend)
+    canvas.drawLine(
+      Offset(rx - 4, actualY + 4),
+      Offset(rx - 8 - (legSwing * 0.5), actualY + 12),
+      darkLimbPaint,
+    );
+    canvas.drawLine(
+      Offset(rx - 8 - (legSwing * 0.5), actualY + 12),
+      Offset(rx - 10 - legSwing, actualY + 22),
+      darkLimbPaint,
+    );
+
+    canvas.drawLine(
+      Offset(rx + 4, actualY + 4),
+      Offset(rx + 8 + (legSwing * 0.5), actualY + 12),
+      neonBodyPaint,
+    );
+    canvas.drawLine(
+      Offset(rx + 8 + (legSwing * 0.5), actualY + 12),
+      Offset(rx + 10 + legSwing, actualY + 22),
+      neonBodyPaint,
+    );
+
+    // Torso (Athletic body)
+    canvas.drawLine(
+      Offset(rx, actualY - 14),
+      Offset(rx, actualY + 4),
+      Paint()
+        ..color = const Color(0xFFFF0055)
+        ..strokeWidth = 7.0
+        ..strokeCap = StrokeCap.round,
+    );
+
+    // Arms
+    canvas.drawLine(
+      Offset(rx - 4, actualY - 10),
+      Offset(rx - 10 - armSwing, actualY),
+      darkLimbPaint,
+    );
+    canvas.drawLine(
+      Offset(rx + 4, actualY - 10),
+      Offset(rx + 10 + armSwing, actualY),
+      neonBodyPaint,
+    );
+
+    // Head with Neon Visor
+    canvas.drawCircle(
+      Offset(rx, actualY - 20),
+      7.5,
+      Paint()..color = const Color(0xFF00F5D4),
+    );
   }
 
   @override
-  bool shouldRepaint(covariant _TrackPainter oldDelegate) => true;
+  bool shouldRepaint(covariant _Ultra3DWorldPainter oldDelegate) => true;
 }
 
-// ---------------- MAIN TRACKER SCREEN ----------------
-class MainTrackerScreen extends StatefulWidget {
-  const MainTrackerScreen({super.key});
+// ---------------- DASHBOARD UI ----------------
+class UltraTrackerDashboard extends StatefulWidget {
+  const UltraTrackerDashboard({super.key});
 
   @override
-  State<MainTrackerScreen> createState() => _MainTrackerScreenState();
+  State<UltraTrackerDashboard> createState() => _UltraTrackerDashboardState();
 }
 
-class _MainTrackerScreenState extends State<MainTrackerScreen> {
+class _UltraTrackerDashboardState extends State<UltraTrackerDashboard> {
   final RunManagerService _manager = RunManagerService();
   final MapController _mapController = MapController();
 
@@ -412,58 +591,74 @@ class _MainTrackerScreenState extends State<MainTrackerScreen> {
         ((session?.totalDistanceMeters ?? 0) / 1000).toStringAsFixed(2);
 
     return Scaffold(
-      backgroundColor: const Color(0xFF0D111A),
+      backgroundColor: const Color(0xFF07090E),
       appBar: AppBar(
         backgroundColor: Colors.transparent,
         elevation: 0,
         title: const Text(
-          "TEMPLE RUNNER HUD",
-          style: TextStyle(letterSpacing: 2, fontWeight: FontWeight.w900),
+          "TEMPLE RUN 3D GPS",
+          style: TextStyle(
+            letterSpacing: 3,
+            fontWeight: FontWeight.w900,
+            color: Color(0xFF00F5D4),
+          ),
         ),
         centerTitle: true,
       ),
       body: Column(
         children: [
+          // 1. 3D TEMPLE RUN GRAPHICS SCREEN
           Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 16.0),
-            child: TempleRunTrackWidget(currentSpeedKmh: speed),
+            padding: const EdgeInsets.symmetric(horizontal: 14.0),
+            child: UltraTempleCanvasWidget(
+              currentSpeedKmh: speed,
+              coins: session?.coinsCollected ?? 0,
+            ),
           ),
           const SizedBox(height: 10),
+
+          // 2. TARGET PROGRESS BAR
           Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 20.0),
+            padding: const EdgeInsets.symmetric(horizontal: 18.0),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Row(
                   mainAxisAlignment: MainAxisAlignment.spaceBetween,
                   children: [
-                    Text("TARGET: ${session?.targetDistanceKm ?? 5.0} KM",
-                        style: const TextStyle(
-                            color: Colors.white70, fontSize: 12)),
                     Text(
-                        "${((session?.progressFraction ?? 0) * 100).toInt()}% COMPLETED",
-                        style: const TextStyle(
-                            color: Color(0xFF00F5D4),
-                            fontWeight: FontWeight.bold,
-                            fontSize: 12)),
+                      "GOAL: ${session?.targetDistanceKm ?? 5.0} KM",
+                      style: const TextStyle(color: Colors.white70, fontSize: 11, fontWeight: FontWeight.bold),
+                    ),
+                    Text(
+                      "${((session?.progressFraction ?? 0) * 100).toInt()}% COMPLETED",
+                      style: const TextStyle(
+                        color: Color(0xFF00F5D4),
+                        fontWeight: FontWeight.bold,
+                        fontSize: 11,
+                      ),
+                    ),
                   ],
                 ),
-                const SizedBox(height: 6),
-                LinearProgressIndicator(
-                  value: session?.progressFraction ?? 0.0,
-                  backgroundColor: const Color(0xFF1E2532),
-                  valueColor:
-                      const AlwaysStoppedAnimation(Color(0xFF00F5D4)),
-                  minHeight: 8,
-                  borderRadius: BorderRadius.circular(4),
+                const SizedBox(height: 5),
+                ClipRRect(
+                  borderRadius: BorderRadius.circular(6),
+                  child: LinearProgressIndicator(
+                    value: session?.progressFraction ?? 0.0,
+                    backgroundColor: const Color(0xFF141923),
+                    valueColor: const AlwaysStoppedAnimation(Color(0xFF00F5D4)),
+                    minHeight: 7,
+                  ),
                 ),
               ],
             ),
           ),
-          const SizedBox(height: 12),
+          const SizedBox(height: 10),
+
+          // 3. LIVE MAP WITH RUNNER PIN
           Expanded(
             child: Container(
-              margin: const EdgeInsets.symmetric(horizontal: 16),
+              margin: const EdgeInsets.symmetric(horizontal: 14),
               decoration: BoxDecoration(
                 borderRadius: BorderRadius.circular(20),
                 border: Border.all(color: Colors.white12),
@@ -492,26 +687,22 @@ class _MainTrackerScreenState extends State<MainTrackerScreen> {
                           ),
                         ],
                       ),
-                    if (session != null &&
-                        session.routeCoordinates.isNotEmpty)
+                    if (session != null && session.routeCoordinates.isNotEmpty)
                       MarkerLayer(
                         markers: [
                           Marker(
                             point: session.routeCoordinates.last,
-                            width: 28,
-                            height: 28,
+                            width: 26,
+                            height: 26,
                             child: Container(
                               decoration: const BoxDecoration(
                                 shape: BoxShape.circle,
                                 color: Color(0xFFFF0055),
                                 boxShadow: [
-                                  BoxShadow(
-                                      color: Color(0xFFFF0055),
-                                      blurRadius: 12),
+                                  BoxShadow(color: Color(0xFFFF0055), blurRadius: 10),
                                 ],
                               ),
-                              child: const Icon(Icons.navigation,
-                                  size: 16, color: Colors.white),
+                              child: const Icon(Icons.navigation, size: 15, color: Colors.white),
                             ),
                           ),
                         ],
@@ -521,12 +712,13 @@ class _MainTrackerScreenState extends State<MainTrackerScreen> {
               ),
             ),
           ),
+
+          // 4. CONTROL DECK & METRICS
           Container(
-            padding: const EdgeInsets.all(20),
+            padding: const EdgeInsets.all(18),
             decoration: const BoxDecoration(
-              color: Color(0xFF141923),
-              borderRadius:
-                  BorderRadius.vertical(top: Radius.circular(24)),
+              color: Color(0xFF10141E),
+              borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
             ),
             child: Column(
               mainAxisSize: MainAxisSize.min,
@@ -534,45 +726,42 @@ class _MainTrackerScreenState extends State<MainTrackerScreen> {
                 Row(
                   mainAxisAlignment: MainAxisAlignment.spaceAround,
                   children: [
-                    _statItem("DIST", "$distanceKm km"),
-                    _statItem("SPEED", "${speed.toStringAsFixed(1)} km/h"),
-                    _statItem("ENERGY", "${session?.caloriesBurned ?? 0} kcal"),
-                    _statItem("LAPS", "${session?.laps.length ?? 0}"),
+                    _hudCard("DISTANCE", "$distanceKm km"),
+                    _hudCard("SPEED", "${speed.toStringAsFixed(1)} km/h"),
+                    _hudCard("ENERGY", "${session?.caloriesBurned ?? 0} kcal"),
+                    _hudCard("LAPS", "${session?.laps.length ?? 0}"),
                   ],
                 ),
-                const SizedBox(height: 16),
+                const SizedBox(height: 14),
                 Row(
                   children: [
                     if (!_manager.isRunning)
                       Expanded(
                         child: ElevatedButton(
-                          onPressed: () =>
-                              _manager.startRun(targetDistanceKm: 5.0),
+                          onPressed: () => _manager.startRun(targetDistanceKm: 5.0),
                           style: ElevatedButton.styleFrom(
                             backgroundColor: const Color(0xFF00F5D4),
                             foregroundColor: Colors.black,
-                            padding: const EdgeInsets.symmetric(
-                                vertical: 14),
-                            shape: RoundedRectangleBorder(
-                                borderRadius: BorderRadius.circular(12)),
+                            padding: const EdgeInsets.symmetric(vertical: 14),
+                            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
                           ),
-                          child: const Text("START 5KM RUN",
-                              style: TextStyle(fontWeight: FontWeight.bold)),
+                          child: const Text(
+                            "START 5KM RUN 🏃",
+                            style: TextStyle(fontWeight: FontWeight.w900, fontSize: 15),
+                          ),
                         ),
                       )
                     else ...[
                       Expanded(
                         child: ElevatedButton.icon(
                           onPressed: _manager.recordLap,
-                          icon: const Icon(Icons.flag),
-                          label: const Text("NEW LAP (चक्कर)"),
+                          icon: const Icon(Icons.flag, size: 20),
+                          label: const Text("LAP (चक्कर)"),
                           style: ElevatedButton.styleFrom(
                             backgroundColor: const Color(0xFF7B2CBF),
                             foregroundColor: Colors.white,
-                            padding: const EdgeInsets.symmetric(
-                                vertical: 14),
-                            shape: RoundedRectangleBorder(
-                                borderRadius: BorderRadius.circular(12)),
+                            padding: const EdgeInsets.symmetric(vertical: 14),
+                            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
                           ),
                         ),
                       ),
@@ -596,20 +785,12 @@ class _MainTrackerScreenState extends State<MainTrackerScreen> {
     );
   }
 
-  Widget _statItem(String label, String val) {
+  Widget _hudCard(String label, String val) {
     return Column(
       children: [
-        Text(label,
-            style: const TextStyle(
-                fontSize: 10,
-                color: Colors.white54,
-                fontWeight: FontWeight.bold)),
+        Text(label, style: const TextStyle(fontSize: 10, color: Colors.white54, fontWeight: FontWeight.bold)),
         const SizedBox(height: 2),
-        Text(val,
-            style: const TextStyle(
-                fontSize: 16,
-                color: Colors.white,
-                fontWeight: FontWeight.w900)),
+        Text(val, style: const TextStyle(fontSize: 15, color: Colors.white, fontWeight: FontWeight.w900)),
       ],
     );
   }
