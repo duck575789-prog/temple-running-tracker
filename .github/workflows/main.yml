@@ -27,18 +27,22 @@ jobs:
         run: |
           flutter create . --platforms=android --org com.templerun.app
 
-      - name: Add Android GPS Permissions
+      - name: Fix Android SDK Settings and Permissions
         run: |
+          sed -i 's/minSdk = .*/minSdk = 21/g' android/app/build.gradle || true
+          sed -i 's/minSdkVersion .*/minSdkVersion 21/g' android/app/build.gradle || true
+          sed -i 's/compileSdk = .*/compileSdk = 34/g' android/app/build.gradle || true
+          sed -i 's/compileSdkVersion .*/compileSdkVersion 34/g' android/app/build.gradle || true
           sed -i '/<application/i \    <uses-permission android:name="android.permission.INTERNET"/>\n    <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION"/>\n    <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION"/>\n    <uses-permission android:name="android.permission.FOREGROUND_SERVICE"/>\n    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_LOCATION"/>' android/app/src/main/AndroidManifest.xml
 
       - name: Get Dependencies
         run: flutter pub get
 
-      - name: Build Release APK
-        run: flutter build apk --release
+      - name: Build APK
+        run: flutter build apk --debug --no-tree-shake-icons
 
       - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
           name: TempleRunner-APK
-          path: build/app/outputs/flutter-apk/app-release.apk
+          path: build/app/outputs/flutter-apk/app-debug.apk
